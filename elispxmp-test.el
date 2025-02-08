@@ -4,7 +4,7 @@
 
 ;; Author: ril <fenril.nh@gmail.com>
 ;; Package-Version: 1.0.0
-;; Package-Requires: ((cort "7.2.0") (cl-lib "0.5")
+;; Package-Requires: ((cort "7.2.0") (cl-lib "0.5"))
 ;; Keywords:tools
 
 ;; This program is free software; you can redistribute it and/or modify
