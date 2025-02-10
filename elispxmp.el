@@ -232,6 +232,7 @@ USE-PP indicates whether pretty-printing should be used."
       (insert " =>"))
   (apply orig-fun args))
 
+;;;###autoload
 (advice-add 'comment-dwim :around #'elispxmp-hack-comment-dwim)
 
 (provide 'elispxmp)
