@@ -23,7 +23,7 @@ Then, the value of the S-expression inserts after `; =>`.
 
 from: https://rubikitch.hatenadiary.org/entry/20090313/lispxmp
 
-``` sample-before.el
+``` sample-before1.el
 (+ 3 4) ; =>
 (current-buffer) ; =>
 
@@ -35,8 +35,29 @@ from: https://rubikitch.hatenadiary.org/entry/20090313/lispxmp
 )
 ```
 
-After `M-x lispxmp`
-``` sample-after.el
+```sample-before2.el
+(setq i 0)
+(progn
+  1                                     ; =>
+  )
+i                                       ; =>
+(dotimes (x 3)
+  i                                     ; =>
+  (incf i)
+  i                                     ; =>
+  )
+
+(+ 1                                    ; =>
+   (+ 3
+      ;; => 3
+      4)
+   ;; => 7
+   )
+;; => 8
+```
+
+After `M-x elispxmp`
+``` sample-after1.el
 (+ 3 4) ; => 7
 (current-buffer) ; => #<buffer 13-044055.el>
 
@@ -48,7 +69,7 @@ After `M-x lispxmp`
 )
 ```
 
-``` more-example.el
+``` sample-after2.el
 (setq i 0)
 (progn
   1                                     ; => 1
