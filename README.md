@@ -1,6 +1,6 @@
 # elispxmp.el
 
-It provides automatic annotation of Emacs Lisp code with evaluation
+It provides automatic annotation of Emacs Lisp and Scheme code with evaluation
 results.  The main function `elispxmp` processes the selected
 region or the entire buffer, evaluates the expressions, and
 annotates the code with the results.  It also includes a
@@ -90,6 +90,21 @@ i                                       ; => 0
 ;; => 8
 ```
 
+### Tricky example
+
+from: https://x.com/kaz_yos/status/817545016411377665
+
+```
+(defun fib (n)
+  n                                     ; => 3, 2, 1, 0, 1
+  (if (<= n 1)
+      1
+    (+ (fib (- n 1))
+       (fib (- n 2)))))
+
+(fib 3)                                 ; => 3
+```
+
 ## Test
 
 This project has simple tests using [cort.el](https://github.com/conao3/cort.el)
@@ -123,3 +138,5 @@ GNU Emacs 29.4 (build 9, x86_64-pc-linux-gnu, GTK+ Version 3.24.41, cairo versio
 [PASSED] elispxmp/cl-lib-1
 [PASSED] elispxmp/cl-lib-2
 ```
+
+Scheme version is not well tested now.
