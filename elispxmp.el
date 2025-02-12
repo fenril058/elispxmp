@@ -4,7 +4,7 @@
 
 ;; Author: ril <fenril.nh@gmail.com>
 ;; Keywords: lisp, convenience
-;; Package-Version: 1.0.0
+;; Package-Version: 1.1.0
 ;; Package-Requires: ((emacs "24.4"))
 ;; URL: https://github.com/fenril058/elispxmp
 
@@ -42,8 +42,6 @@
 
 (require 'pp)
 
-(defconst elispxmp-version "1.0.0")
-
 (defgroup elispxmp nil
   "Automagic Emacs Lisp code annotation."
   :group 'emacs)
@@ -55,7 +53,7 @@
   :group 'elispxmp)
 
 ;;;###autoload
-(defcustom elispxmp-comment-dwim-enable-modes (list 'emacs-lisp-mode 'lisp-mode)
+(defcustom elispxmp-comment-dwim-enable-modes (list 'emacs-lisp-mode 'lisp-mode 'scheme-mode)
   "List of major modes where lispxmp-hack-comment-dwim is enabled."
   :type 'list
   :group 'lispxmp)
@@ -68,9 +66,11 @@
 
 (defvar elispxmp-results-alist nil
   "Association list of results from evaluating Lisp expressions.
-Each element is a cons cell where the car is an index (integer) and the cdr is a cons cell
-of the form (RESULT . USE-PP). RESULT is the evaluation result of the Lisp expression,
-converted to a string, and USE-PP is a boolean indicating whether pretty-printing was used.
+Each element is a cons cell where the car is an index (integer)
+and the cdr is a cons cell of the form (RESULT . USE-PP). RESULT
+is the evaluation result of the Lisp expression, converted to a
+string, and USE-PP is a boolean indicating whether
+pretty-printing was used.
 
 Example:
   ((0 . (\"result0\" . use-pp))
@@ -81,30 +81,63 @@ Example:
 (defvar elispxmp-temp-buffer " *elispxmp tmp*"
   "Temporary buffer used for evaluating Lisp expressions.")
 
+;;; for scheme
+
+;;;###autoload
+(defcustom elispxmp-scheme-command "racket"
+  "The command to evaluate Scheme scripts.")
+
+(defvar elispxmp-header--scheme "(define lispxmp-result-alist '())
+
+(define nil '())
+
+(define (%elispxmp-store-result use-pp index result)
+  (define (push! item)
+    (set! lispxmp-result-alist (cons item lispxmp-result-alist)))
+  (define (prin1-to-string use-pp obj)
+    (let ((output (open-output-string)))
+      (write obj output)
+      (cons (get-output-string output) use-pp)))
+  (push! (cons index (prin1-to-string use-pp result)))
+  result)
+
+(define (get-lispxmp-result-alist)
+  lispxmp-result-alist)
+")
+
+(defvar elispxmp-footer--scheme "
+(get-lispxmp-result-alist)")
+
 ;;;###autoload
 (defun elispxmp ()
-  "Main function to evaluate Lisp expressions and insert results into the buffer."
+  "Evaluate Lisp expressions and insert results into the buffer.
+Emacs-lisp-mode and scheme-mode are supported."
   (interactive)
   (save-excursion
     (save-restriction
       (when (region-active-p)
         (narrow-to-region (region-beginning) (region-end)))
-      (elispxmp-evaluate-with-temp-buffer (current-buffer))
+      (let ((mode major-mode)
+            (buf (current-buffer)))
+        (elispxmp-evaluate-with-temp-buffer buf mode))
       (elispxmp-insert-annotations))))
 
-(defun elispxmp-evaluate-with-temp-buffer (buf)
+(defun elispxmp-evaluate-with-temp-buffer (buf mode)
   "Create a temporary buffer from BUF, replace markers, and evaluate the buffer.
-BUF is the original buffer containing Lisp expressions."
+BUF is the original buffer containing Lisp expressions.
+MODE is the major mode to be used for evaluation."
   (with-current-buffer (get-buffer-create elispxmp-temp-buffer)
     (unwind-protect
         (progn
-          (let (emacs-lisp-mode-hook after-change-major-mode-hook) (emacs-lisp-mode))
+          (let ((intern (concat (symbol-name mode) "-hook"))
+                after-change-major-mode-hook)
+            (funcall mode))
           (erase-buffer)
           (insert-buffer-substring buf)
           (goto-char (point-min))
-          (elispxmp-process-markers-and-wrap)
+          (elispxmp-process-markers-and-wrap mode)
           (setq elispxmp-results-alist nil)
-          (elispxmp-eval-buffer buf))
+          (elispxmp-eval-buffer buf mode))
       (unless elispxmp-debug
         (kill-buffer elispxmp-temp-buffer)))))
 
@@ -130,13 +163,14 @@ The function preserves the current point and mark using `save-excursion`."
         (while (looking-at next-line-re)
           (delete-region (point) (progn (forward-line 1) (point))))))))
 
-(defun elispxmp-process-markers-and-wrap ()
+(defun elispxmp-process-markers-and-wrap (mode)
   "Process markers and wrap S-expressions in the buffer.
 
 This function searches for lines that match the pattern of multiple semicolons
 followed by ' => ' and wraps the preceding S-expression with a result marker."
   (save-excursion
     (goto-char (point-min))
+    (elispxmp-insert-header mode)
     (let ((index 0))
       (while (re-search-forward "\\(;+ *\\)=>.*$" nil t)
         (let ((use-pp (eq (line-beginning-position) (match-beginning 0))))
@@ -144,7 +178,21 @@ followed by ' => ' and wraps the preceding S-expression with a result marker."
             (goto-char (match-beginning 0))
             (elispxmp-wrap-expressions use-pp index)
             (replace-match (format "%s" (match-string 1)))
-            (setq index (1+ index))))))))
+            (setq index (1+ index))))))
+    (goto-char (point-max))
+    (elispxmp-insert-footer mode)))
+
+(defun elispxmp-insert-header (mode)
+  (cond ((eq mode 'scheme-mode)
+         (insert elispxmp-header--scheme))
+        (t
+         nil)))
+
+(defun elispxmp-insert-footer (mode)
+  (cond ((eq mode 'scheme-mode)
+         (insert elispxmp-footer--scheme))
+        (t
+         nil)))
 
 (defun elispxmp-annotation-p ()
   "Check if the current line contains an annotation."
@@ -166,13 +214,44 @@ INDEX is the result marker index."
       (goto-char e)
       (insert ")"))))
 
-(defun elispxmp-eval-buffer (buf)
+(defun elispxmp-eval-buffer (buf mode)
   "Evaluate the temporary buffer and handle errors.
-If an error occurs during evaluation, undo the changes in BUF and display an error message."
+If an error occurs during evaluation, undo the changes in BUF and
+display an error message.  This function supports Emacs Lisp and
+Scheme modes."
+  (cond ((provided-mode-derived-p mode 'emacs-lisp-mode)
+         (elispxmp-eval-buffer--elisp buf))
+        ((eq mode 'scheme-mode)
+         (elispxmp-eval-buffer--scheme buf))
+        (t
+         (error "%s is not supported." mode))))
+
+(defun elispxmp-eval-buffer--elisp (buf)
+  "Evaluate the temporary buffer and handle errors.
+If an error occurs during evaluation, undo the changes in BUF and
+display an error message."
   (condition-case err
       (eval-buffer)
     (error
      (message "Error during evaluation: %s" (error-message-string err)))))
+
+(defun elispxmp-eval-buffer--scheme (buf)
+  "Evaluate the temporary buffer and handle errors.
+If an error occurs during evaluation, undo the changes in BUF and
+display an error message."
+  (let ((result (shell-command-to-string (concat elispxmp-scheme-command " -e "
+                                                 (shell-quote-argument
+                                                  (buffer-substring-no-properties (point-min) (point-max)))))))
+    (with-temp-buffer
+      (emacs-lisp-mode)
+      (insert result)
+      (goto-char (point-max))
+      (forward-sexp -1)
+      (insert "(setq elispxmp-results-alist ")
+      (forward-sexp)
+      (insert ")")
+      (forward-sexp -1)
+      (eval-region (point) (point-max)))))
 
 (defun elispxmp-insert-annotations ()
   "Insert evaluation results back into the original buffer."

@@ -36,6 +36,7 @@ elispxmp retuns the value with priperties of strings in
 annotation,"
   (let ((elispxmp-string-no-properties no-properties-p))
     (with-temp-buffer
+      (let (emacs-lisp-mode-hook after-change-major-mode-hook) (emacs-lisp-mode))
       (insert from)
       (elispxmp)
       (buffer-string))))
