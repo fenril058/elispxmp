@@ -174,7 +174,7 @@ followed by ' => ' and wraps the preceding S-expression with a result marker."
         (let ((use-pp (cond
                        ((eq mode 'scheme-mode) "'()")
                        (t
-                        (line-beginning-position) (match-beginning 0)))))
+                        (eq (line-beginning-position) (match-beginning 0))))))
           (when (elispxmp-annotation-p)
             (goto-char (match-beginning 0))
             (elispxmp-wrap-expressions use-pp index)
