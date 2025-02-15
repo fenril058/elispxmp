@@ -56,7 +56,7 @@
 (defcustom elispxmp-comment-dwim-enable-modes (list 'emacs-lisp-mode 'lisp-mode 'scheme-mode)
   "List of major modes where lispxmp-hack-comment-dwim is enabled."
   :type 'list
-  :group 'lispxmp)
+  :group 'elispxmp)
 
 ;;;###autoload
 (defcustom elispxmp-debug nil
@@ -85,7 +85,9 @@ Example:
 
 ;;;###autoload
 (defcustom elispxmp-scheme-command "racket"
-  "The command to evaluate Scheme scripts.")
+  "The command to evaluate Scheme scripts."
+  :type 'string
+  :group 'elispxmp)
 
 (defvar elispxmp-header--scheme "(define lispxmp-result-alist '())
 
@@ -105,6 +107,38 @@ Example:
 
 (defvar elispxmp-footer--scheme "
 (get-lispxmp-result-alist)")
+
+;;; Selector
+
+;;;###autoload
+(defcustom elispxmp-mode-handlers
+  '((scheme-mode
+     :insert-header (lambda () (insert elispxmp-header--scheme))
+     :insert-footer (lambda () (insert elispxmp-footer--scheme))
+     :get-use-pp (lambda () "'()")
+     :eval-buffer elispxmp-eval-buffer--scheme)
+    (emacs-lisp-mode
+     :insert-header nil
+     :insert-footer nil
+     :get-use-pp (lambda () (eq (line-beginning-position) (match-beginning 0)))
+     :eval-buffer elispxmp-eval-buffer--elisp))
+  "Alist of mode-specific handlers for elispxmp."
+  :type 'list
+  :group 'elispxmp)
+
+(defun elispxmp-get-mode-handler (mode key)
+  "Get the handler function for MODE and KEY from `elispxmp-mode-handlers`.
+If MODE derived from emacs-lisp-mode, it is treated as emacs-lisp-mode."
+  (let* ((mode (or (provided-mode-derived-p mode 'emacs-lisp-mode)
+                   mode))
+         (mode-entry (assoc mode elispxmp-mode-handlers)))
+    (if mode-entry
+        (plist-get (cdr mode-entry) key)
+      (message "%s is not supported." mode))))
+
+(defun elispxmp-exec-mode-handler (mode key &rest args)
+  (let ((handler (elispxmp-get-mode-handler mode key)))
+    (when handler (apply handler args))))
 
 ;;;###autoload
 (defun elispxmp ()
@@ -135,7 +169,7 @@ MODE is the major mode to be used for evaluation."
           (goto-char (point-min))
           (elispxmp-process-markers-and-wrap mode)
           (setq elispxmp-results-alist nil)
-          (elispxmp-eval-buffer buf mode))
+          (elispxmp-exec-mode-handler mode :eval-buffer buf))
       (unless elispxmp-debug
         (kill-buffer elispxmp-temp-buffer)))))
 
@@ -168,32 +202,17 @@ This function searches for lines that match the pattern of multiple semicolons
 followed by ' => ' and wraps the preceding S-expression with a result marker."
   (save-excursion
     (goto-char (point-min))
-    (elispxmp-insert-header mode)
+    (elispxmp-exec-mode-handler mode :insert-header)
     (let ((index 0))
       (while (re-search-forward "\\(;+ *\\)=>.*$" nil t)
-        (let ((use-pp (cond
-                       ((eq mode 'scheme-mode) "'()")
-                       (t
-                        (eq (line-beginning-position) (match-beginning 0))))))
+        (let ((use-pp (elispxmp-exec-mode-handler mode :get-use-pp)))
           (when (elispxmp-annotation-p)
             (goto-char (match-beginning 0))
             (elispxmp-wrap-expressions use-pp index)
             (replace-match (format "%s" (match-string 1)))
             (setq index (1+ index))))))
     (goto-char (point-max))
-    (elispxmp-insert-footer mode)))
-
-(defun elispxmp-insert-header (mode)
-  (cond ((eq mode 'scheme-mode)
-         (insert elispxmp-header--scheme))
-        (t
-         nil)))
-
-(defun elispxmp-insert-footer (mode)
-  (cond ((eq mode 'scheme-mode)
-         (insert elispxmp-footer--scheme))
-        (t
-         nil)))
+    (elispxmp-exec-mode-handler mode :insert-footer)))
 
 (defun elispxmp-annotation-p ()
   "Check if the current line contains an annotation."
@@ -214,18 +233,6 @@ INDEX is the result marker index."
       (insert (format "(%%elispxmp-store-result %s %d " use-pp index))
       (goto-char e)
       (insert ")"))))
-
-(defun elispxmp-eval-buffer (buf mode)
-  "Evaluate the temporary buffer and handle errors.
-If an error occurs during evaluation, undo the changes in BUF and
-display an error message.  This function supports Emacs Lisp and
-Scheme modes."
-  (cond ((provided-mode-derived-p mode 'emacs-lisp-mode)
-         (elispxmp-eval-buffer--elisp buf))
-        ((eq mode 'scheme-mode)
-         (elispxmp-eval-buffer--scheme buf))
-        (t
-         (error "%s is not supported." mode))))
 
 (defun elispxmp-eval-buffer--elisp (buf)
   "Evaluate the temporary buffer and handle errors.
