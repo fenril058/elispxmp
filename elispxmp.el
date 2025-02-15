@@ -4,7 +4,7 @@
 
 ;; Author: ril <fenril.nh@gmail.com>
 ;; Keywords: lisp, convenience
-;; Package-Version: 1.1.0
+;; Package-Version: 1.1.1
 ;; Package-Requires: ((emacs "24.4"))
 ;; URL: https://github.com/fenril058/elispxmp
 
@@ -89,8 +89,6 @@ Example:
 
 (defvar elispxmp-header--scheme "(define lispxmp-result-alist '())
 
-(define nil '())
-
 (define (%elispxmp-store-result use-pp index result)
   (define (push! item)
     (set! lispxmp-result-alist (cons item lispxmp-result-alist)))
@@ -173,7 +171,10 @@ followed by ' => ' and wraps the preceding S-expression with a result marker."
     (elispxmp-insert-header mode)
     (let ((index 0))
       (while (re-search-forward "\\(;+ *\\)=>.*$" nil t)
-        (let ((use-pp (eq (line-beginning-position) (match-beginning 0))))
+        (let ((use-pp (cond
+                       ((eq mode 'scheme-mode) "'()")
+                       (t
+                        (line-beginning-position) (match-beginning 0)))))
           (when (elispxmp-annotation-p)
             (goto-char (match-beginning 0))
             (elispxmp-wrap-expressions use-pp index)
